@@ -461,3 +461,391 @@ describe('ContextMatcher', () => {
 - Status: Planning Phase
 - Lead Developer: [TBD]
 - Technical Contact: [TBD] 
+
+interface ThreadedProposal {
+    thread_ts: string;  // Slack thread timestamp
+    job_post: {
+        title: string;
+        link: string;
+        budget: number;
+    };
+    proposal: {
+        draft: string;
+        status: 'drafting' | 'ready' | 'submitted';
+        last_edited: Date;
+    };
+}
+
+// Slack message structure
+const jobPostMessage = {
+    blocks: [
+        {
+            type: "section",
+            text: {
+                type: "mrkdwn",
+                text: "*New Job:* ${job.title}\n💰 Budget: $${job.budget}"
+            }
+        },
+        {
+            type: "actions",
+            elements: [
+                {
+                    type: "button",
+                    text: {
+                        type: "plain_text",
+                        text: "Draft Proposal"
+                    },
+                    action_id: "draft_proposal"
+                }
+            ]
+        }
+    ]
+}; 
+
+### 7. Proposal Structure and Data Sources
+
+#### Proposal Sections
+```typescript
+interface ProposalStructure {
+    sections: {
+        introduction: {
+            content: string;
+            maxLength: number;  // typically 2-3 sentences
+            dataPoints: {
+                jobTitle: string;        // from job post
+                clientIndustry?: string; // from job analysis
+                specificProblem: string; // from job description
+            }
+        },
+        relevantExperience: {
+            content: string;
+            maxLength: number;  // typically 2-3 paragraphs
+            dataPoints: {
+                matchingProjects: Project[];     // from user's project history
+                relevantSkills: string[];        // from user profile + job requirements
+                yearsExperience: number;         // from user profile
+                domainExpertise: string[];       // from project history
+            }
+        },
+        approachAndMethodology: {
+            content: string;
+            maxLength: number;  // typically 2-3 paragraphs
+            dataPoints: {
+                technicalRequirements: string[]; // from job description
+                proposedTechnology: string[];    // from user skills + job requirements
+                methodology: string;            // based on project type
+                timeline: string;               // based on budget and scope
+            }
+        },
+        pricing: {
+            content: string;
+            maxLength: number;  // typically 1-2 paragraphs
+            dataPoints: {
+                budget: {
+                    fixed: number;
+                    hourly: number;
+                };
+                scope: 'fixed' | 'hourly';
+                milestones?: {
+                    description: string;
+                    amount: number;
+                }[];
+            }
+        },
+        closing: {
+            content: string;
+            maxLength: number;  // typically 1-2 sentences
+            dataPoints: {
+                availability: string;    // from user settings
+                timezone: string;        // from user profile
+                startDate: string;       // from user settings
+            }
+        }
+    }
+}
+```
+
+#### Data Source Mapping
+```typescript
+interface DataSources {
+    jobPost: {
+        title: string;
+        description: string;
+        budget: number;
+        skills: string[];
+        clientInfo: {
+            history: string;
+            verificationStatus: boolean;
+            totalSpent: number;
+        };
+    };
+    userProfile: {
+        professionalSummary: string;
+        skills: Skill[];
+        hourlyRate: number;
+        experienceYears: number;
+        certifications: string[];
+        achievements: Achievement[];
+        availability: {
+            startDate: Date;
+            hoursPerWeek: number;
+            timezone: string;
+        };
+    };
+    projectHistory: {
+        projects: Project[];
+        technologies: string[];
+        industries: string[];
+        clientTestimonials: string[];
+    };
+    templates: {
+        industry: Record<string, Template>;
+        projectType: Record<string, Template>;
+        budget: Record<string, Template>;
+    };
+}
+```
+
+#### Information Extraction Process
+```typescript
+interface InformationExtractor {
+    async extractJobRequirements(description: string): Promise<{
+        technicalSkills: string[];
+        softSkills: string[];
+        domainKnowledge: string[];
+        projectScope: string;
+        timeline?: string;
+    }>;
+
+    async findRelevantProjects(
+        requirements: string[],
+        projects: Project[]
+    ): Promise<{
+        matchingProjects: Project[];
+        relevanceScores: Map<string, number>;
+    }>;
+
+    async extractClientPreferences(
+        description: string
+    ): Promise<{
+        communicationStyle: string;
+        projectPriorities: string[];
+        preferredMethodologies?: string[];
+    }>;
+}
+```
+
+#### Proposal Generation Logic
+```typescript
+class ProposalGenerator {
+    async generateProposal(context: {
+        job: JobPost,
+        user: UserProfile,
+        projects: Project[]
+    }): Promise<ProposalStructure> {
+        // 1. Extract key information
+        const requirements = await this.extractJobRequirements(job.description);
+        const clientPrefs = await this.extractClientPreferences(job.description);
+        
+        // 2. Match relevant experience
+        const relevantExp = await this.findRelevantProjects(
+            requirements.technicalSkills,
+            projects
+        );
+
+        // 3. Select appropriate template
+        const template = await this.selectTemplate({
+            industry: job.industry,
+            budget: job.budget,
+            projectType: requirements.projectScope
+        });
+
+        // 4. Generate each section
+        return {
+            introduction: this.generateIntro({
+                job,
+                requirements,
+                clientPrefs
+            }),
+            relevantExperience: this.formatExperience({
+                matchingProjects: relevantExp,
+                requirements
+            }),
+            approachAndMethodology: this.generateApproach({
+                requirements,
+                methodology: clientPrefs.preferredMethodologies
+            }),
+            pricing: this.calculatePricing({
+                budget: job.budget,
+                scope: requirements.projectScope,
+                timeline: requirements.timeline
+            }),
+            closing: this.generateClosing({
+                availability: user.availability,
+                projectStart: requirements.timeline
+            })
+        };
+    }
+}
+```
+
+### 8. AI-Driven Proposal Generation
+
+#### Core Generator Logic
+```typescript
+class ProposalGenerator {
+    constructor(
+        private openAI: OpenAIClient,
+        private contextManager: ContextManager,
+        private validator: ProposalValidator
+    ) {}
+
+    async generateProposal(jobPost: JobPost, userId: string): Promise<string> {
+        // 1. Gather context
+        const context = await this.gatherContext(jobPost, userId);
+        
+        // 2. Build AI prompt
+        const prompt = this.buildPrompt(context);
+        
+        // 3. Generate proposal
+        const proposal = await this.generateWithAI(prompt);
+        
+        // 4. Validate and format
+        return this.validateAndFormat(proposal);
+    }
+
+    private async gatherContext(jobPost: JobPost, userId: string): Promise<ProposalContext> {
+        const userProfile = await this.contextManager.getUserProfile(userId);
+        const relevantProjects = await this.contextManager.findRelevantProjects(
+            jobPost.requirements,
+            userId
+        );
+
+        return {
+            job: {
+                title: jobPost.title,
+                description: jobPost.description,
+                requirements: jobPost.requirements,
+                clientInfo: {
+                    history: jobPost.clientHistory,
+                    verificationStatus: jobPost.clientVerified,
+                    totalSpent: jobPost.clientSpent
+                }
+            },
+            user: {
+                profile: {
+                    summary: userProfile.professionalSummary,
+                    skills: userProfile.skills,
+                    experience: userProfile.experienceYears,
+                    achievements: userProfile.achievements
+                },
+                availability: userProfile.availability
+            },
+            relevantProjects
+        };
+    }
+
+    private buildPrompt(context: ProposalContext): string {
+        return `
+You are an experienced web developer crafting a proposal for an Upwork job.
+Write a natural, engaging proposal that demonstrates understanding of the client's needs
+and highlights relevant experience. Be professional yet conversational.
+
+Job Details:
+${context.job.title}
+${context.job.description}
+
+Your Profile:
+${context.user.profile.summary}
+Skills: ${context.user.profile.skills.join(', ')}
+Experience: ${context.user.profile.experience} years
+
+Relevant Projects:
+${context.relevantProjects.map(p => `
+- ${p.name}: ${p.description}
+  Technologies: ${p.technologies.join(', ')}
+  Outcome: ${p.outcome}
+`).join('\n')}
+
+Guidelines:
+1. Show understanding of the client's specific needs
+2. Highlight relevant experience and skills
+3. Explain your approach clearly
+4. Be professional but conversational
+5. DO NOT discuss pricing or rates
+6. Keep it concise and focused
+7. End with a clear call to action
+
+Generate a proposal that follows these guidelines while maintaining a natural flow.
+        `;
+    }
+
+    private async generateWithAI(prompt: string): Promise<string> {
+        const response = await this.openAI.createCompletion({
+            model: 'gpt-4',
+            prompt,
+            temperature: 0.7,
+            max_tokens: 1000,
+            top_p: 0.9,
+            frequency_penalty: 0.5,
+            presence_penalty: 0.5
+        });
+
+        return response.choices[0].text.trim();
+    }
+
+    private async validateAndFormat(proposal: string): Promise<string> {
+        // Validate required elements
+        const validation = await this.validator.validate(proposal);
+        if (!validation.isValid) {
+            throw new Error(`Invalid proposal: ${validation.issues.join(', ')}`);
+        }
+
+        // Format for Slack
+        return this.formatForSlack(proposal);
+    }
+
+    private formatForSlack(proposal: string): string {
+        // Add markdown formatting
+        // Add emojis for visual appeal
+        // Ensure proper spacing
+        return proposal
+            .split('\n\n')
+            .map(paragraph => paragraph.trim())
+            .filter(Boolean)
+            .join('\n\n');
+    }
+}
+```
+
+#### Usage Example
+```typescript
+// Initialize the proposal generator
+const generator = new ProposalGenerator(
+    new OpenAIClient({
+        apiKey: process.env.OPENAI_API_KEY
+    }),
+    new ContextManager(),
+    new ProposalValidator()
+);
+
+// Generate a proposal
+const proposal = await generator.generateProposal(
+    {
+        title: "E-commerce Platform Development",
+        description: "Need a full-stack developer to build...",
+        requirements: ["React", "Node.js", "MongoDB"],
+        clientHistory: "Payment verified, $50k+ spent",
+        clientVerified: true,
+        clientSpent: 50000
+    },
+    "user123"
+);
+
+// The proposal will be natural and context-aware, focusing on:
+// - Understanding the client's needs
+// - Relevant experience
+// - Clear approach
+// - Professional yet conversational tone
+// - No pricing discussion
+``` 
