@@ -52,14 +52,16 @@ async function main() {
                 // Post to Slack
                 await slackService.postProposal(proposal);
                 console.log(`Posted proposal for job: ${job.title}`);
-            } catch (error) {
-                console.error(`Error processing job ${job.title}:`, error);
-                await slackService.postError(`Error processing job ${job.title}: ${error.message}`);
+            } catch (error: unknown) {
+                const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+                console.error(`Error processing job ${job.title}:`, errorMessage);
+                await slackService.postError(`Error processing job ${job.title}: ${errorMessage}`);
             }
         }
-    } catch (error) {
-        console.error('Error in main process:', error);
-        await slackService.postError(`Error in main process: ${error.message}`);
+    } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.error('Error in main process:', errorMessage);
+        await slackService.postError(`Error in main process: ${errorMessage}`);
     }
 }
 

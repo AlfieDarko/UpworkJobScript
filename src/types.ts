@@ -11,19 +11,23 @@ export interface JobPost {
     budget: number;
 }
 
+export interface UserProfile {
+    skills: string[];
+    experience: string[];
+    hourlyRate: number;
+}
+
+export interface Project {
+    title: string;
+    description: string;
+    technologies: string[];
+    outcomes: string[];
+}
+
 export interface ProposalContext {
     jobPost: JobPost;
-    userProfile: {
-        skills: string[];
-        experience: string[];
-        hourlyRate: number;
-    };
-    relevantProjects: {
-        title: string;
-        description: string;
-        technologies: string[];
-        outcomes: string[];
-    }[];
+    userProfile: UserProfile;
+    relevantProjects: Project[];
 }
 
 export interface Proposal {
@@ -31,4 +35,9 @@ export interface Proposal {
     jobPost: JobPost;
     generatedAt: Date;
     status: 'pending' | 'approved' | 'rejected';
+}
+
+export interface ProposalValidation {
+    isValid: boolean;
+    issues: string[];
 } 
